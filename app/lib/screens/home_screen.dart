@@ -12,7 +12,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _nameController = TextEditingController();
-  final _serverController = TextEditingController(text: 'ws://10.0.2.2:8080');
+  final _serverController = TextEditingController(text: 'wss://puzzer.onrender.com');
   final _formKey = GlobalKey<FormState>();
 
   @override
@@ -60,8 +60,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       controller: _serverController,
                       decoration: const InputDecoration(
                         labelText: 'Địa chỉ server',
-                        hintText: 'ws://10.0.2.2:8080',
-                        helperText: 'Máy ảo Android dùng 10.0.2.2. Thiết bị thật dùng IP LAN của máy chạy server.',
+                        hintText: 'wss://puzzer.onrender.com',
+                        helperText: 'Mặc định dùng server online. Tự chạy server ở nhà thì đổi sang ws://10.0.2.2:8080 (máy ảo) hoặc IP LAN.',
                         helperMaxLines: 2,
                         border: OutlineInputBorder(),
                       ),
