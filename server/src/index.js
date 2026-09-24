@@ -45,6 +45,10 @@ wss.on('connection', (socket) => {
 
   function leaveCurrentRoom() {
     if (currentRoom && player) {
+      const released = currentRoom.releasePiecesHeldBy(player.id);
+      for (const piece of released) {
+        currentRoom.broadcast({ type: 'piece_released', payload: { pieceId: piece.id } });
+      }
       currentRoom.removePlayer(player.id);
       currentRoom.broadcast({ type: 'player_left', payload: { playerId: player.id } });
     }
@@ -113,9 +117,17 @@ wss.on('connection', (socket) => {
 
       case 'pick_piece': {
         if (!currentRoom || !player) return;
-        const piece = currentRoom.bringToFront(payload.pieceId);
+        const piece = currentRoom.holdPiece(payload.pieceId, player.id);
         if (piece) {
-          currentRoom.broadcast({ type: 'piece_picked', payload: { pieceId: piece.id, z: piece.z, by: player.id } }, player.id);
+          currentRoom.broadcast(
+            { type: 'piece_picked', payload: { pieceId: piece.id, z: piece.z, heldBy: piece.heldBy, by: player.id } },
+            player.id,
+          );
+        } else {
+          // Someone else already holds it (or it's placed) - tell the requester
+          // so their optimistic local drag can be cancelled.
+          const current = currentRoom.getPiece(payload.pieceId);
+          send(socket, 'pick_rejected', { pieceId: payload.pieceId, heldBy: current?.heldBy ?? null });
         }
         break;
       }
@@ -124,7 +136,7 @@ wss.on('connection', (socket) => {
         if (!currentRoom || !player) return;
         const { pieceId, x, y } = payload;
         if (typeof x !== 'number' || typeof y !== 'number') return;
-        const piece = currentRoom.movePiece(pieceId, x, y);
+        const piece = currentRoom.movePiece(pieceId, x, y, player.id);
         if (piece) {
           currentRoom.broadcast({ type: 'piece_moved', payload: { pieceId: piece.id, x: piece.x, y: piece.y, by: player.id } }, player.id);
         }
@@ -135,11 +147,11 @@ wss.on('connection', (socket) => {
         if (!currentRoom || !player) return;
         const { pieceId, x, y } = payload;
         if (typeof x !== 'number' || typeof y !== 'number') return;
-        const piece = currentRoom.dropPiece(pieceId, x, y);
+        const piece = currentRoom.dropPiece(pieceId, x, y, player.id);
         if (piece) {
           currentRoom.broadcast({
             type: 'piece_placed',
-            payload: { pieceId: piece.id, x: piece.x, y: piece.y, placed: piece.placed, z: piece.z, by: player.id },
+            payload: { pieceId: piece.id, x: piece.x, y: piece.y, placed: piece.placed, z: piece.z, heldBy: piece.heldBy, by: player.id },
           });
           if (currentRoom.completed) {
             currentRoom.broadcast({ type: 'puzzle_completed', payload: {} });

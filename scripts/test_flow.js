@@ -36,14 +36,18 @@ async function main() {
   // pieceSize is shared with clients; correct position = col*pieceSize, row*pieceSize
   const correctPos = (p) => ({ x: p.col * stateB.pieceSize, y: p.row * stateB.pieceSize });
 
-  // Bob moves a piece then drops it far from home -> should NOT lock
+  // Bob must hold a piece before he's allowed to move/drop it
   const piece = stateB.pieces[0];
+  b.send(JSON.stringify({ type: 'pick_piece', payload: { pieceId: piece.id } }));
+
+  // Bob drops it far from home -> should NOT lock
   const farPromise = once(a, 'piece_placed');
   b.send(JSON.stringify({ type: 'drop_piece', payload: { pieceId: piece.id, x: piece.x + 5, y: piece.y + 5 } }));
   const farResult = await farPromise;
   console.log('Drop far from home -> placed:', farResult.placed, '(expected false)');
 
-  // Bob drops the same piece exactly on its correct spot -> should lock
+  // Bob picks it up again and drops exactly on its correct spot -> should lock
+  b.send(JSON.stringify({ type: 'pick_piece', payload: { pieceId: piece.id } }));
   const exactPromise = once(a, 'piece_placed');
   const home = correctPos(piece);
   b.send(JSON.stringify({ type: 'drop_piece', payload: { pieceId: piece.id, x: home.x, y: home.y } }));
@@ -54,6 +58,7 @@ async function main() {
   const completedPromise = once(a, 'puzzle_completed');
   for (const p of stateB.pieces.slice(1)) {
     const pos = correctPos(p);
+    b.send(JSON.stringify({ type: 'pick_piece', payload: { pieceId: p.id } }));
     b.send(JSON.stringify({ type: 'drop_piece', payload: { pieceId: p.id, x: pos.x, y: pos.y } }));
   }
   await completedPromise;

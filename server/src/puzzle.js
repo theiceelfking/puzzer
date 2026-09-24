@@ -40,6 +40,8 @@ function generatePieces(rows, cols) {
         y,
         placed: false,
         z: id,
+        heldBy: null,
+        heldAt: 0,
       });
     }
   }

@@ -36,6 +36,8 @@ class PuzzlePieceWidget extends StatefulWidget {
   final double canvasWidth;
   final double canvasHeight;
   final bool isActive;
+  final String? youId;
+  final Color? heldByColor;
   final double Function() currentScale;
   final void Function(String pieceId) onPickUp;
   final void Function(String pieceId, double x, double y) onMove;
@@ -52,6 +54,8 @@ class PuzzlePieceWidget extends StatefulWidget {
     required this.canvasWidth,
     required this.canvasHeight,
     required this.isActive,
+    required this.youId,
+    required this.heldByColor,
     required this.currentScale,
     required this.onPickUp,
     required this.onMove,
@@ -66,6 +70,14 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
   late double _x;
   late double _y;
   bool _dragging = false;
+  // True from the moment a drop is sent until the server's echo for THIS
+  // drop actually lands. GameService mutates PuzzlePiece objects in place,
+  // so widget.piece can still hold the pre-drop x/y for a bit after we let
+  // go; without this guard, the next unrelated rebuild (e.g. another
+  // player's move, or our own z-order reset) would sync _x/_y back to that
+  // stale value and the piece would visibly snap backwards before jumping
+  // to its real dropped spot once the echo arrives.
+  bool _pendingConfirm = false;
   DateTime _lastSent = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
@@ -76,14 +88,32 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
     _clamp();
   }
 
+  bool get _heldByOther =>
+      !widget.piece.placed && widget.piece.heldBy != null && widget.piece.heldBy != widget.youId;
+
   @override
   void didUpdateWidget(covariant PuzzlePieceWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!_dragging) {
-      _x = widget.piece.x;
-      _y = widget.piece.y;
-      _clamp();
+
+    if (_dragging && _heldByOther) {
+      // Someone else's pick_piece won the race after we'd already started
+      // dragging optimistically; give up and snap to the authoritative spot.
+      _dragging = false;
+      _pendingConfirm = false;
     }
+    if (_dragging) return;
+
+    if (_pendingConfirm) {
+      final matchesSent = (widget.piece.x - _x).abs() < 0.5 && (widget.piece.y - _y).abs() < 0.5;
+      if (!widget.piece.placed && !matchesSent) {
+        return; // still stale; keep showing our locally-dropped position
+      }
+      _pendingConfirm = false;
+    }
+
+    _x = widget.piece.x;
+    _y = widget.piece.y;
+    _clamp();
   }
 
   // _x/_y are board-local (can be negative, into the scatter padding), and
@@ -110,7 +140,8 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final locked = widget.piece.placed;
+    final heldByOther = _heldByOther;
+    final locked = widget.piece.placed || heldByOther;
 
     return Positioned(
       left: widget.canvasOffsetX + _x,
@@ -144,20 +175,30 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
         onPointerUp: locked
             ? null
             : (_) {
-                setState(() => _dragging = false);
+                setState(() {
+                  _dragging = false;
+                  _pendingConfirm = true;
+                });
                 widget.onDrop(widget.piece.id, _x, _y);
               },
         onPointerCancel: locked
             ? null
             : (_) {
-                setState(() => _dragging = false);
+                setState(() {
+                  _dragging = false;
+                  _pendingConfirm = true;
+                });
                 widget.onDrop(widget.piece.id, _x, _y);
               },
         child: DecoratedBox(
           decoration: BoxDecoration(
             border: Border.all(
-              color: locked ? Colors.transparent : Colors.white.withValues(alpha: 0.85),
-              width: 1.2,
+              color: heldByOther
+                  ? (widget.heldByColor ?? Colors.grey.shade600)
+                  : widget.piece.placed
+                      ? Colors.transparent
+                      : Colors.white.withValues(alpha: 0.85),
+              width: heldByOther ? 2.5 : 1.2,
             ),
             boxShadow: locked || _dragging == false && !widget.isActive
                 ? const []

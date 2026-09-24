@@ -115,6 +115,8 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
                     canvasWidth: canvasW,
                     canvasHeight: canvasH,
                     isActive: piece.id == _activePieceId,
+                    youId: game.youId,
+                    heldByColor: piece.heldBy == null ? null : game.players[piece.heldBy]?.color,
                     currentScale: () => _currentScale,
                     onPickUp: (id) {
                       setState(() => _activePieceId = id);

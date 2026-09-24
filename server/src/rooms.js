@@ -2,6 +2,7 @@ const { PIECE_SIZE, SNAP_TOLERANCE, generatePieces } = require('./puzzle');
 
 const ROOM_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0/I/1
 const EMPTY_ROOM_TTL_MS = 5 * 60 * 1000;
+const STALE_HOLD_MS = 10 * 1000; // a held piece can be stolen if not refreshed this long
 
 const PLAYER_COLORS = [
   '#FF6B6B', '#4ECDC4', '#FFD166', '#06D6A0',
@@ -31,6 +32,10 @@ class Room {
 
   get pieceCount() {
     return this.pieces.length;
+  }
+
+  getPiece(pieceId) {
+    return this.pieces.find((p) => p.id === pieceId) || null;
   }
 
   placedCount() {
@@ -65,7 +70,7 @@ class Room {
       cols: this.cols,
       pieceSize: PIECE_SIZE,
       pieces: this.pieces.map((p) => ({
-        id: p.id, row: p.row, col: p.col, x: p.x, y: p.y, placed: p.placed, z: p.z,
+        id: p.id, row: p.row, col: p.col, x: p.x, y: p.y, placed: p.placed, z: p.z, heldBy: p.heldBy,
       })),
       players: this.publicPlayers(),
       completed: this.completed,
@@ -83,19 +88,42 @@ class Room {
     }
   }
 
-  /** Moves a piece during an active drag. Rejects if piece already locked. */
-  movePiece(pieceId, x, y) {
+  /** True if `playerId` is allowed to act on this piece right now. */
+  _isHeldByOther(piece, playerId) {
+    if (!piece.heldBy || piece.heldBy === playerId) return false;
+    return Date.now() - piece.heldAt < STALE_HOLD_MS;
+  }
+
+  /** Claims a piece for `playerId`, stealing a stale (abandoned) hold if needed. */
+  holdPiece(pieceId, playerId) {
     const piece = this.pieces.find((p) => p.id === pieceId);
     if (!piece || piece.placed) return null;
+    if (this._isHeldByOther(piece, playerId)) return null;
+    piece.heldBy = playerId;
+    piece.heldAt = Date.now();
+    piece.z = this.zCounter++;
+    return piece;
+  }
+
+  /** Moves a piece during an active drag. Only the current holder may move it. */
+  movePiece(pieceId, x, y, playerId) {
+    const piece = this.pieces.find((p) => p.id === pieceId);
+    if (!piece || piece.placed) return null;
+    if (piece.heldBy !== playerId) return null;
+    piece.heldAt = Date.now();
     piece.x = x;
     piece.y = y;
     return piece;
   }
 
-  /** Drops a piece; snaps + locks it if close enough to its home. */
-  dropPiece(pieceId, x, y) {
+  /** Drops a piece; snaps + locks it if close enough to its home. Releases the hold either way. */
+  dropPiece(pieceId, x, y, playerId) {
     const piece = this.pieces.find((p) => p.id === pieceId);
     if (!piece || piece.placed) return null;
+    if (piece.heldBy !== playerId) return null;
+
+    piece.heldBy = null;
+    piece.heldAt = 0;
 
     const dist = Math.hypot(x - piece.correctX, y - piece.correctY);
     if (dist <= SNAP_TOLERANCE) {
@@ -115,11 +143,17 @@ class Room {
     return piece;
   }
 
-  bringToFront(pieceId) {
-    const piece = this.pieces.find((p) => p.id === pieceId);
-    if (!piece || piece.placed) return null;
-    piece.z = this.zCounter++;
-    return piece;
+  /** Releases any pieces held by a player who disconnected mid-drag. Returns the freed pieces. */
+  releasePiecesHeldBy(playerId) {
+    const released = [];
+    for (const piece of this.pieces) {
+      if (piece.heldBy === playerId) {
+        piece.heldBy = null;
+        piece.heldAt = 0;
+        released.push(piece);
+      }
+    }
+    return released;
   }
 }
 

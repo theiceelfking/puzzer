@@ -6,6 +6,7 @@ class PuzzlePiece {
   double y;
   bool placed;
   int z;
+  String? heldBy;
 
   PuzzlePiece({
     required this.id,
@@ -15,6 +16,7 @@ class PuzzlePiece {
     required this.y,
     required this.placed,
     required this.z,
+    this.heldBy,
   });
 
   factory PuzzlePiece.fromJson(Map<String, dynamic> json) {
@@ -26,6 +28,7 @@ class PuzzlePiece {
       y: (json['y'] as num).toDouble(),
       placed: json['placed'] as bool? ?? false,
       z: json['z'] as int? ?? 0,
+      heldBy: json['heldBy'] as String?,
     );
   }
 }

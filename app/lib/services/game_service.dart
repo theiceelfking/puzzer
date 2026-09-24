@@ -117,7 +117,16 @@ class GameService extends ChangeNotifier {
         players.remove(payload['playerId']);
         break;
       case 'piece_picked':
-        _updatePiece(payload['pieceId'] as String, (p) => p.z = payload['z'] as int? ?? p.z);
+        _updatePiece(payload['pieceId'] as String, (p) {
+          p.z = payload['z'] as int? ?? p.z;
+          p.heldBy = payload['heldBy'] as String?;
+        });
+        break;
+      case 'pick_rejected':
+        _updatePiece(payload['pieceId'] as String, (p) => p.heldBy = payload['heldBy'] as String?);
+        break;
+      case 'piece_released':
+        _updatePiece(payload['pieceId'] as String, (p) => p.heldBy = null);
         break;
       case 'piece_moved':
         _updatePiece(payload['pieceId'] as String, (p) {
@@ -131,6 +140,7 @@ class GameService extends ChangeNotifier {
           p.y = (payload['y'] as num).toDouble();
           p.placed = payload['placed'] as bool? ?? p.placed;
           p.z = payload['z'] as int? ?? p.z;
+          p.heldBy = payload['heldBy'] as String?;
         });
         break;
       case 'puzzle_completed':
