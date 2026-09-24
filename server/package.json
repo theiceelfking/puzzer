@@ -1,0 +1,14 @@
+{
+  "name": "puzzer-server",
+  "version": "1.0.0",
+  "description": "Realtime collaborative jigsaw puzzle WebSocket server",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

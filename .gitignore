@@ -1,0 +1,22 @@
+# Node
+server/node_modules/
+scripts/node_modules/
+*.log
+
+# Flutter
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/build/
+app/.idea/
+app/*.iml
+app/android/local.properties
+app/android/*.iml
+app/android/.gradle/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+.claude/
