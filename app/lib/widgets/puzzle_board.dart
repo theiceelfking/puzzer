@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/piece_shape.dart';
 import '../models/puzzle_piece.dart';
 import '../services/game_service.dart';
 import 'puzzle_piece_widget.dart';
@@ -109,6 +110,13 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
                     piece: piece,
                     image: widget.image,
                     srcRect: _srcRectFor(piece, cellSrcW, cellSrcH),
+                    edges: PieceEdges.forPiece(
+                      seed: game.roomId ?? '',
+                      row: piece.row,
+                      col: piece.col,
+                      rows: rows,
+                      cols: cols,
+                    ),
                     renderSize: pieceSize,
                     canvasOffsetX: padX,
                     canvasOffsetY: padY,

@@ -2,24 +2,79 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../models/piece_shape.dart';
 import '../models/puzzle_piece.dart';
 
 class _PiecePainter extends CustomPainter {
   final ui.Image image;
   final Rect srcRect;
-  final bool placed;
+  final double pieceSize;
+  final Path path;
+  final Color outlineColor;
+  final double outlineWidth;
+  final bool elevated;
 
-  _PiecePainter({required this.image, required this.srcRect, required this.placed});
+  _PiecePainter({
+    required this.image,
+    required this.srcRect,
+    required this.pieceSize,
+    required this.path,
+    required this.outlineColor,
+    required this.outlineWidth,
+    required this.elevated,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
-    final dstRect = Offset.zero & size;
-    canvas.drawImageRect(image, srcRect, dstRect, Paint()..filterQuality = FilterQuality.medium);
+    if (elevated) {
+      canvas.drawShadow(path.shift(const Offset(0, 3)), Colors.black, 6, false);
+    }
+    canvas.save();
+    canvas.clipPath(path);
+    // Draw the whole image scaled so that this piece's cell (srcRect) lands
+    // on the square at (pad, pad); the clip keeps only the piece's shape,
+    // including tabs that reach into neighbouring cells.
+    final pad = (size.width - pieceSize) / 2;
+    final scaleX = pieceSize / srcRect.width;
+    final scaleY = pieceSize / srcRect.height;
+    final dst = Rect.fromLTWH(
+      pad - srcRect.left * scaleX,
+      pad - srcRect.top * scaleY,
+      image.width * scaleX,
+      image.height * scaleY,
+    );
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      dst,
+      Paint()..filterQuality = FilterQuality.medium,
+    );
+    canvas.restore();
+    if (outlineWidth > 0) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = outlineWidth
+          ..color = outlineColor,
+      );
+    }
   }
+
+  // Only the piece's actual outline is grabbable, so transparent corners
+  // around a tab don't steal touches from the neighbouring piece.
+  @override
+  bool hitTest(Offset position) => path.contains(position);
 
   @override
   bool shouldRepaint(covariant _PiecePainter oldDelegate) {
-    return oldDelegate.srcRect != srcRect || oldDelegate.placed != placed || oldDelegate.image != image;
+    return oldDelegate.srcRect != srcRect ||
+        oldDelegate.image != image ||
+        oldDelegate.pieceSize != pieceSize ||
+        oldDelegate.path != path ||
+        oldDelegate.outlineColor != outlineColor ||
+        oldDelegate.outlineWidth != outlineWidth ||
+        oldDelegate.elevated != elevated;
   }
 }
 
@@ -30,6 +85,7 @@ class PuzzlePieceWidget extends StatefulWidget {
   final PuzzlePiece piece;
   final ui.Image image;
   final Rect srcRect;
+  final PieceEdges edges;
   final double renderSize;
   final double canvasOffsetX;
   final double canvasOffsetY;
@@ -48,6 +104,7 @@ class PuzzlePieceWidget extends StatefulWidget {
     required this.piece,
     required this.image,
     required this.srcRect,
+    required this.edges,
     required this.renderSize,
     required this.canvasOffsetX,
     required this.canvasOffsetY,
@@ -79,10 +136,19 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
   // to its real dropped spot once the echo arrives.
   bool _pendingConfirm = false;
   DateTime _lastSent = DateTime.fromMillisecondsSinceEpoch(0);
+  late Path _path;
+
+  // Extra room around the square cell so tabs aren't cut off.
+  double get _tabPad => widget.renderSize * kTabRatio;
+
+  void _buildPath() {
+    _path = buildPiecePath(widget.edges, widget.renderSize, Offset(_tabPad, _tabPad));
+  }
 
   @override
   void initState() {
     super.initState();
+    _buildPath();
     _x = widget.piece.x;
     _y = widget.piece.y;
     _clamp();
@@ -94,6 +160,9 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
   @override
   void didUpdateWidget(covariant PuzzlePieceWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.edges != widget.edges || oldWidget.renderSize != widget.renderSize) {
+      _buildPath();
+    }
 
     if (_dragging && _heldByOther) {
       // Someone else's pick_piece won the race after we'd already started
@@ -117,13 +186,12 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
   }
 
   // _x/_y are board-local (can be negative, into the scatter padding), and
-  // rendered at canvasOffsetX/Y + _x/_y. Clamp so that rendered position
-  // stays within [0, canvasWidth/Height], i.e. _x in
-  // [-canvasOffsetX, canvasWidth - canvasOffsetX - renderSize].
-  double get _minX => -widget.canvasOffsetX;
-  double get _maxX => widget.canvasWidth - widget.canvasOffsetX - widget.renderSize;
-  double get _minY => -widget.canvasOffsetY;
-  double get _maxY => widget.canvasHeight - widget.canvasOffsetY - widget.renderSize;
+  // rendered at canvasOffsetX/Y + _x/_y. Clamp so that the piece, tabs
+  // included, stays within [0, canvasWidth/Height].
+  double get _minX => -widget.canvasOffsetX + _tabPad;
+  double get _maxX => widget.canvasWidth - widget.canvasOffsetX - widget.renderSize - _tabPad;
+  double get _minY => -widget.canvasOffsetY + _tabPad;
+  double get _maxY => widget.canvasHeight - widget.canvasOffsetY - widget.renderSize - _tabPad;
 
   void _clamp() {
     _x = _x.clamp(_minX, _maxX < _minX ? _minX : _maxX);
@@ -142,19 +210,22 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
   Widget build(BuildContext context) {
     final heldByOther = _heldByOther;
     final locked = widget.piece.placed || heldByOther;
+    final boxSize = widget.renderSize + _tabPad * 2;
 
     return Positioned(
-      left: widget.canvasOffsetX + _x,
-      top: widget.canvasOffsetY + _y,
-      width: widget.renderSize,
-      height: widget.renderSize,
+      left: widget.canvasOffsetX + _x - _tabPad,
+      top: widget.canvasOffsetY + _y - _tabPad,
+      width: boxSize,
+      height: boxSize,
       // Uses raw pointer events (Listener) instead of GestureDetector's pan
       // recognizer: a GestureDetector here would compete in the same gesture
       // arena as the ancestor InteractiveViewer's scale recognizer and can
       // lose, silently swallowing the drag. Listener bypasses the arena
       // entirely, so it isn't affected by that ancestor.
       child: Listener(
-        behavior: HitTestBehavior.opaque,
+        // deferToChild: only hits inside the piece outline count (see
+        // _PiecePainter.hitTest), not the transparent padding around tabs.
+        behavior: HitTestBehavior.deferToChild,
         onPointerDown: locked
             ? null
             : (_) {
@@ -190,23 +261,20 @@ class _PuzzlePieceWidgetState extends State<PuzzlePieceWidget> {
                 });
                 widget.onDrop(widget.piece.id, _x, _y);
               },
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: heldByOther
-                  ? (widget.heldByColor ?? Colors.grey.shade600)
-                  : widget.piece.placed
-                      ? Colors.transparent
-                      : Colors.white.withValues(alpha: 0.85),
-              width: heldByOther ? 2.5 : 1.2,
-            ),
-            boxShadow: locked || _dragging == false && !widget.isActive
-                ? const []
-                : [BoxShadow(color: Colors.black.withValues(alpha: 0.35), blurRadius: 8, offset: const Offset(0, 3))],
-          ),
-          child: CustomPaint(
-            size: Size.square(widget.renderSize),
-            painter: _PiecePainter(image: widget.image, srcRect: widget.srcRect, placed: locked),
+        child: CustomPaint(
+          size: Size.square(boxSize),
+          painter: _PiecePainter(
+            image: widget.image,
+            srcRect: widget.srcRect,
+            pieceSize: widget.renderSize,
+            path: _path,
+            outlineColor: heldByOther
+                ? (widget.heldByColor ?? Colors.grey.shade600)
+                : widget.piece.placed
+                    ? Colors.black.withValues(alpha: 0.18)
+                    : Colors.white.withValues(alpha: 0.85),
+            outlineWidth: heldByOther ? 2.5 : (widget.piece.placed ? 0.8 : 1.2),
+            elevated: !locked && (_dragging || widget.isActive),
           ),
         ),
       ),
