@@ -20,3 +20,6 @@ app/android/.gradle/
 .vscode/
 .DS_Store
 .claude/
+
+# Local source pictures, not bundled with the app
+/assets/

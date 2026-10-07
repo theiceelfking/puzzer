@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config.dart';
 import 'create_room_screen.dart';
 import 'join_room_screen.dart';
 
@@ -12,13 +13,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _nameController = TextEditingController();
-  final _serverController = TextEditingController(text: 'wss://puzzer.onrender.com');
   final _formKey = GlobalKey<FormState>();
 
   @override
   void dispose() {
     _nameController.dispose();
-    _serverController.dispose();
     super.dispose();
   }
 
@@ -41,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const Icon(Icons.extension, size: 64, color: Colors.deepPurple),
                     const SizedBox(height: 12),
                     Text(
-                      'Puzzer',
+                      'Puzzer Together',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.bold),
                     ),
@@ -55,18 +54,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: const InputDecoration(labelText: 'Tên của bạn', border: OutlineInputBorder()),
                       validator: (v) => (v == null || v.trim().isEmpty) ? 'Vui lòng nhập tên' : null,
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _serverController,
-                      decoration: const InputDecoration(
-                        labelText: 'Địa chỉ server',
-                        hintText: 'wss://puzzer.onrender.com',
-                        helperText: 'Mặc định dùng server online. Tự chạy server ở nhà thì đổi sang ws://10.0.2.2:8080 (máy ảo) hoặc IP LAN.',
-                        helperMaxLines: 2,
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => (v == null || v.trim().isEmpty) ? 'Vui lòng nhập địa chỉ server' : null,
-                    ),
                     const SizedBox(height: 32),
                     FilledButton.icon(
                       icon: const Icon(Icons.add_circle_outline),
@@ -76,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => CreateRoomScreen(
                             playerName: _nameController.text.trim(),
-                            serverUrl: _serverController.text.trim(),
+                            serverUrl: kServerUrl,
                           ),
                         ));
                       },
@@ -90,7 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Navigator.of(context).push(MaterialPageRoute(
                           builder: (_) => JoinRoomScreen(
                             playerName: _nameController.text.trim(),
-                            serverUrl: _serverController.text.trim(),
+                            serverUrl: kServerUrl,
                           ),
                         ));
                       },

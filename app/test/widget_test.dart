@@ -7,7 +7,7 @@ void main() {
   testWidgets('Home screen shows title and action buttons', (WidgetTester tester) async {
     await tester.pumpWidget(const PuzzerApp());
 
-    expect(find.text('Puzzer'), findsOneWidget);
+    expect(find.text('Puzzer Together'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Tạo phòng mới'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, 'Tham gia phòng có sẵn'), findsOneWidget);
   });

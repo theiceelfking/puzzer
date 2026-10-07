@@ -19,7 +19,9 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final difficulty = kPuzzleDifficulties[_difficultyIndex];
+    final image = kPuzzleImages.firstWhere((o) => o.id == _selectedImageId);
+    final difficulties = image.difficulties;
+    final difficulty = difficulties[_difficultyIndex.clamp(0, difficulties.length - 1)];
 
     return Scaffold(
       appBar: AppBar(title: const Text('Tạo phòng mới')),
@@ -52,12 +54,19 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                       Expanded(
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(9),
-                          child: Image.asset(option.assetPath, fit: BoxFit.cover, width: double.infinity),
+                          child: Image.asset(
+                            option.assetPath,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            // Decode thumbnails small; the full pictures are large.
+                            cacheWidth: 480,
+                          ),
                         ),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(option.label),
+                        child: Text(option.label,
+                            maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
                       ),
                     ],
                   ),
@@ -65,39 +74,53 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
               );
             }).toList(),
           ),
-          const SizedBox(height: 24),
-          const Text('Độ khó', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: List.generate(kPuzzleDifficulties.length, (i) {
-              final d = kPuzzleDifficulties[i];
-              return ChoiceChip(
-                label: Text('${d.label} (${d.pieceCount} mảnh)'),
-                selected: _difficultyIndex == i,
-                onSelected: (_) => setState(() => _difficultyIndex = i),
-              );
-            }),
-          ),
-          const SizedBox(height: 32),
-          FilledButton.icon(
-            icon: const Icon(Icons.add_circle_outline),
-            label: const Text('Tạo phòng'),
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => GameScreen(
-                  connect: (service) => service.connectAndCreateRoom(
-                    serverUrl: widget.serverUrl,
-                    playerName: widget.playerName,
-                    imageId: _selectedImageId,
-                    rows: difficulty.rows,
-                    cols: difficulty.cols,
-                  ),
-                ),
-              ));
-            },
-          ),
         ],
+      ),
+      // Pinned so the picture list can grow without pushing these off-screen.
+      bottomNavigationBar: Material(
+        elevation: 8,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text('Độ khó', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  children: List.generate(difficulties.length, (i) {
+                    final d = difficulties[i];
+                    return ChoiceChip(
+                      label: Text('${d.label} (${d.pieceCount} mảnh)'),
+                      selected: difficulty == d,
+                      onSelected: (_) => setState(() => _difficultyIndex = i),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  icon: const Icon(Icons.add_circle_outline),
+                  label: const Text('Tạo phòng'),
+                  onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => GameScreen(
+                        connect: (service) => service.connectAndCreateRoom(
+                          serverUrl: widget.serverUrl,
+                          playerName: widget.playerName,
+                          imageId: _selectedImageId,
+                          rows: difficulty.rows,
+                          cols: difficulty.cols,
+                        ),
+                      ),
+                    ));
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

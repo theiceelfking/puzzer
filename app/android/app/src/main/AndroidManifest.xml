@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="puzzer"
+        android:label="Puzzer Together"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:provider/provider.dart';
 
+import '../models/puzzle_catalog.dart';
 import '../services/game_service.dart';
 import '../widgets/player_avatars.dart';
 import '../widgets/puzzle_board.dart';
@@ -31,7 +32,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   }
 
   Future<void> _loadImage(String imageId) async {
-    final data = await rootBundle.load('assets/images/$imageId.png');
+    final data = await rootBundle.load(puzzleAssetPath(imageId));
     final bytes = Uint8List.view(data.buffer, data.offsetInBytes, data.lengthInBytes);
     final codec = await ui.instantiateImageCodec(bytes);
     final frame = await codec.getNextFrame();
@@ -151,7 +152,7 @@ class _CompletionOverlay extends StatelessWidget {
                   const SizedBox(height: 16),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.asset('assets/images/$imageId.png', width: 220),
+                    child: Image.asset(puzzleAssetPath(imageId), width: 220),
                   ),
                   const SizedBox(height: 16),
                   FilledButton(

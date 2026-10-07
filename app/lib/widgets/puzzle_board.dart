@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/piece_shape.dart';
-import '../models/puzzle_piece.dart';
+import '../models/puzzle_catalog.dart';
 import '../services/game_service.dart';
 import 'puzzle_piece_widget.dart';
 
@@ -59,10 +59,26 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
     final canvasW = boardW + padX * 2;
     final canvasH = boardH + padY * 2;
 
-    final cellSrcW = widget.image.width / cols;
-    final cellSrcH = widget.image.height / rows;
+    // The grid's aspect ratio rarely matches the picture exactly, so use the
+    // largest centred region of the picture with the board's ratio (like
+    // BoxFit.cover) instead of stretching it.
+    final imageW = widget.image.width.toDouble();
+    final imageH = widget.image.height.toDouble();
+    final boardRatio = boardW / boardH;
+    final cropW = imageW / imageH > boardRatio ? imageH * boardRatio : imageW;
+    final cropH = imageW / imageH > boardRatio ? imageH : imageW / boardRatio;
+    final cropLeft = (imageW - cropW) / 2;
+    final cropTop = (imageH - cropH) / 2;
+    final cellSrcW = cropW / cols;
+    final cellSrcH = cropH / rows;
 
-    final sortedPieces = [...game.pieces]..sort((a, b) => a.z.compareTo(b.z));
+    // Placed pieces always sit underneath loose ones, so a piece locked into
+    // the board can never cover one that still needs to be picked up.
+    final sortedPieces = [...game.pieces]
+      ..sort((a, b) {
+        if (a.placed != b.placed) return a.placed ? -1 : 1;
+        return a.z.compareTo(b.z);
+      });
     if (_activePieceId != null) {
       final idx = sortedPieces.indexWhere((p) => p.id == _activePieceId);
       if (idx != -1) {
@@ -101,7 +117,7 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
                   height: boardH,
                   child: DecoratedBox(
                     decoration: BoxDecoration(border: Border.all(color: Colors.white54, width: 2)),
-                    child: Opacity(opacity: 0.25, child: Image(image: AssetImage(_assetPathFor(game.imageId)), fit: BoxFit.fill)),
+                    child: Opacity(opacity: 0.25, child: Image(image: AssetImage(puzzleAssetPath(game.imageId)), fit: BoxFit.cover)),
                   ),
                 ),
                 for (final piece in sortedPieces)
@@ -109,7 +125,12 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
                     key: ValueKey(piece.id),
                     piece: piece,
                     image: widget.image,
-                    srcRect: _srcRectFor(piece, cellSrcW, cellSrcH),
+                    srcRect: Rect.fromLTWH(
+                      cropLeft + piece.col * cellSrcW,
+                      cropTop + piece.row * cellSrcH,
+                      cellSrcW,
+                      cellSrcH,
+                    ),
                     edges: PieceEdges.forPiece(
                       seed: game.roomId ?? '',
                       row: piece.row,
@@ -144,9 +165,4 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
     );
   }
 
-  Rect _srcRectFor(PuzzlePiece piece, double cellW, double cellH) {
-    return Rect.fromLTWH(piece.col * cellW, piece.row * cellH, cellW, cellH);
-  }
-
-  String _assetPathFor(String imageId) => 'assets/images/$imageId.png';
 }

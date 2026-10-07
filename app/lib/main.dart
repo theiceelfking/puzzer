@@ -16,7 +16,7 @@ class PuzzerApp extends StatelessWidget {
     return ChangeNotifierProvider(
       create: (_) => GameService(),
       child: MaterialApp(
-        title: 'Puzzer',
+        title: 'Puzzer Together',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
         darkTheme: ThemeData(colorSchemeSeed: Colors.deepPurple, brightness: Brightness.dark, useMaterial3: true),
