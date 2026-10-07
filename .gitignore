@@ -23,3 +23,6 @@ app/android/.gradle/
 
 # Local source pictures, not bundled with the app
 /assets/
+
+# Exported Docker images are published as release assets, not committed
+*.tar
