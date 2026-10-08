@@ -1,10 +1,10 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../models/puzzle_catalog.dart';
+import '../services/picture_prep.dart';
 import 'game_screen.dart';
 
 class CreateRoomScreen extends StatefulWidget {
@@ -27,35 +27,18 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   double _customRatio = 4 / 3;
   bool _picking = false;
 
-  // Raw size the server accepts once base64-encoded (see MAX_IMAGE_BASE64).
-  static const int _maxCustomBytes = 1500 * 1024;
-
   Future<void> _pickCustomImage() async {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      // The picker shrinks and re-encodes the photo, so what we upload is a
-      // modest JPEG rather than a full camera original.
-      final file = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1400,
-        maxHeight: 1400,
-        imageQuality: 70,
-      );
+      final file = await ImagePicker().pickImage(source: ImageSource.gallery);
       if (file == null) return;
-      final bytes = await file.readAsBytes();
-      if (bytes.length > _maxCustomBytes) {
-        _showMessage('Ảnh quá lớn. Hãy chọn ảnh khác.');
-        return;
-      }
-      final codec = await ui.instantiateImageCodec(bytes);
-      final frame = await codec.getNextFrame();
-      final ratio = frame.image.width / frame.image.height;
-      frame.image.dispose();
+      // Shrunk and re-encoded here so it always fits the server's limit.
+      final picture = await preparePicture(await file.readAsBytes());
       if (!mounted) return;
       setState(() {
-        _customBytes = bytes;
-        _customRatio = ratio;
+        _customBytes = picture.bytes;
+        _customRatio = picture.aspectRatio;
         _selectedImageId = kCustomImageId;
         _difficultyIndex = 0;
       });
