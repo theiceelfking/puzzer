@@ -26,3 +26,7 @@ app/android/.gradle/
 
 # Exported Docker images are published as release assets, not committed
 *.tar
+
+# Server-local deploy scripts, kept out of the repo
+/docker/deploy-server.sh
+/docker/deploy-web.sh
