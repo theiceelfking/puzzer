@@ -38,6 +38,8 @@ class GameService extends ChangeNotifier {
   int cols = 0;
   double pieceSize = 100;
   bool completed = false;
+  // Whether the faint picture is drawn under the board as a guide.
+  bool showBackground = true;
 
   final List<PuzzlePiece> pieces = [];
   final Map<String, PuzzlePlayer> players = {};
@@ -50,6 +52,7 @@ class GameService extends ChangeNotifier {
     required String imageId,
     required int rows,
     required int cols,
+    bool showBackground = true,
   }) async {
     _playerName = playerName;
     await _connect(serverUrl);
@@ -58,6 +61,7 @@ class GameService extends ChangeNotifier {
       'imageId': imageId,
       'rows': rows,
       'cols': cols,
+      'showBackground': showBackground,
     });
   }
 
@@ -119,6 +123,7 @@ class GameService extends ChangeNotifier {
     rows = 0;
     cols = 0;
     completed = false;
+    showBackground = true;
     pieces.clear();
     players.clear();
   }
@@ -200,6 +205,7 @@ class GameService extends ChangeNotifier {
     cols = payload['cols'] as int? ?? 0;
     pieceSize = (payload['pieceSize'] as num?)?.toDouble() ?? 100;
     completed = payload['completed'] as bool? ?? false;
+    showBackground = payload['showBackground'] as bool? ?? true;
 
     pieces
       ..clear()

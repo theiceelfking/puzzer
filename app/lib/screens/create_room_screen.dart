@@ -16,6 +16,7 @@ class CreateRoomScreen extends StatefulWidget {
 class _CreateRoomScreenState extends State<CreateRoomScreen> {
   String _selectedImageId = kPuzzleImages.first.id;
   int _difficultyIndex = 0;
+  bool _showBackground = true;
 
   @override
   Widget build(BuildContext context) {
@@ -99,7 +100,16 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                     );
                   }),
                 ),
-                const SizedBox(height: 12),
+                CheckboxListTile(
+                  value: _showBackground,
+                  onChanged: (v) => setState(() => _showBackground = v ?? true),
+                  title: const Text('Hiện nền ảnh'),
+                  subtitle: const Text('Ảnh mờ bên dưới để dễ ghép hơn'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                  contentPadding: EdgeInsets.zero,
+                  dense: true,
+                ),
+                const SizedBox(height: 4),
                 FilledButton.icon(
                   icon: const Icon(Icons.add_circle_outline),
                   label: const Text('Tạo phòng'),
@@ -112,6 +122,7 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                           imageId: _selectedImageId,
                           rows: difficulty.rows,
                           cols: difficulty.cols,
+                          showBackground: _showBackground,
                         ),
                       ),
                     ));

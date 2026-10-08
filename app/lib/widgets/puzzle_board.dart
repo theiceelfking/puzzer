@@ -115,9 +115,19 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
                   top: padY,
                   width: boardW,
                   height: boardH,
+                  // The frame is painted over the guide picture (or over nothing,
+                  // when the room was created without it).
                   child: DecoratedBox(
-                    decoration: BoxDecoration(border: Border.all(color: Colors.white54, width: 2)),
-                    child: Opacity(opacity: 0.25, child: Image(image: AssetImage(puzzleAssetPath(game.imageId)), fit: BoxFit.cover)),
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Theme.of(context).colorScheme.outline, width: 2),
+                    ),
+                    child: game.showBackground
+                        ? Opacity(
+                            opacity: 0.25,
+                            child: Image(image: AssetImage(puzzleAssetPath(game.imageId)), fit: BoxFit.cover),
+                          )
+                        : const SizedBox.expand(),
                   ),
                 ),
                 for (final piece in sortedPieces)

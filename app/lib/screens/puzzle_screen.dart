@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show rootBundle;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, rootBundle;
 import 'package:provider/provider.dart';
 
 import '../models/puzzle_catalog.dart';
@@ -58,7 +58,35 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
         appBar: AppBar(
           title: Row(
             children: [
-              Text('Phòng ${game.roomId ?? ''}'),
+              Tooltip(
+                message: 'Chạm để sao chép mã phòng',
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () async {
+                    final code = game.roomId;
+                    if (code == null) return;
+                    await Clipboard.setData(ClipboardData(text: code));
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context)
+                      ..hideCurrentSnackBar()
+                      ..showSnackBar(SnackBar(
+                        content: Text('Đã sao chép mã phòng $code'),
+                        duration: const Duration(seconds: 2),
+                      ));
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Phòng ${game.roomId ?? ''}'),
+                        const SizedBox(width: 6),
+                        const Icon(Icons.copy, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               const SizedBox(width: 12),
               Expanded(child: PlayerAvatars(players: game.players.values.toList(), youId: game.youId)),
             ],

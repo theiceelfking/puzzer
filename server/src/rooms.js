@@ -18,9 +18,11 @@ function makeRoomCode() {
 }
 
 class Room {
-  constructor(id, imageId, rows, cols) {
+  constructor(id, imageId, rows, cols, showBackground = true) {
     this.id = id;
     this.imageId = imageId;
+    // Whether clients draw the faint picture under the board as a guide.
+    this.showBackground = showBackground;
     this.rows = rows;
     this.cols = cols;
     this.pieces = generatePieces(rows, cols);
@@ -69,6 +71,7 @@ class Room {
       rows: this.rows,
       cols: this.cols,
       pieceSize: PIECE_SIZE,
+      showBackground: this.showBackground,
       pieces: this.pieces.map((p) => ({
         id: p.id, row: p.row, col: p.col, x: p.x, y: p.y, placed: p.placed, z: p.z, heldBy: p.heldBy,
       })),
@@ -163,12 +166,12 @@ class RoomManager {
     setInterval(() => this.sweepStaleRooms(), 60 * 1000).unref();
   }
 
-  createRoom(imageId, rows, cols) {
+  createRoom(imageId, rows, cols, showBackground = true) {
     let id;
     do {
       id = makeRoomCode();
     } while (this.rooms.has(id));
-    const room = new Room(id, imageId, rows, cols);
+    const room = new Room(id, imageId, rows, cols, showBackground);
     this.rooms.set(id, room);
     return room;
   }

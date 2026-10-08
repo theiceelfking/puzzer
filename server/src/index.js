@@ -86,7 +86,9 @@ wss.on('connection', (socket) => {
         const cols = clampGrid(payload.cols ?? 4);
 
         leaveCurrentRoom();
-        const room = roomManager.createRoom(imageId, rows, cols);
+        // Defaults to on, so clients that don't send it keep the old look.
+        const showBackground = payload.showBackground !== false;
+        const room = roomManager.createRoom(imageId, rows, cols, showBackground);
         player = {
           id: crypto.randomUUID(),
           name: sanitizeName(payload.playerName),
