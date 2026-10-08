@@ -1,3 +1,9 @@
+import 'dart:math' as math;
+
+/// Image id of a room whose picture was uploaded by its creator rather than
+/// taken from the bundled list.
+const String kCustomImageId = 'custom';
+
 class PuzzleImageOption {
   final String id;
   final String label;
@@ -72,7 +78,8 @@ const List<PuzzleImageOption> kPuzzleImages = [
   PuzzleImageOption(id: 'moulin_galette', label: 'Moulin de la Galette', assetPath: 'assets/images/moulin_galette.jpg'),
   PuzzleImageOption(id: 'wheat_cypresses', label: 'Lúa mì và cây bách', assetPath: 'assets/images/wheat_cypresses.jpg'),
   PuzzleImageOption(id: 'tiger_storm', label: 'Hổ trong bão nhiệt đới', assetPath: 'assets/images/tiger_storm.jpg'),
-  PuzzleImageOption(id: 'teniers_gallery', label: 'Phòng tranh hoàng gia', assetPath: 'assets/images/teniers_gallery.jpg'),
+  PuzzleImageOption(
+      id: 'teniers_gallery', label: 'Phòng tranh hoàng gia', assetPath: 'assets/images/teniers_gallery.jpg'),
   PuzzleImageOption(
     id: 'peasant_wedding',
     label: 'Đám cưới nông dân',
@@ -88,4 +95,31 @@ String puzzleAssetPath(String imageId) {
     if (option.id == imageId) return option.assetPath;
   }
   return 'assets/images/$imageId.png';
+}
+
+/// Grid sizes for an uploaded picture with the given width / height ratio:
+/// one near each target piece count, as close to the picture's shape as the
+/// server's 2..14 pieces-per-side limit allows.
+List<PuzzleDifficulty> difficultiesForAspect(double ratio) {
+  const targets = {'Dễ': 12, 'Trung bình': 48, 'Khó': 100};
+  final result = <PuzzleDifficulty>[];
+  targets.forEach((label, target) {
+    var bestRows = 2, bestCols = 2;
+    var bestScore = double.infinity;
+    for (var rows = 2; rows <= 14; rows++) {
+      for (var cols = 2; cols <= 14; cols++) {
+        // Shape matters more than hitting the piece count exactly.
+        final score = 3 * (math.log(cols / rows / ratio)).abs() + (math.log(rows * cols / target)).abs();
+        if (score < bestScore) {
+          bestScore = score;
+          bestRows = rows;
+          bestCols = cols;
+        }
+      }
+    }
+    if (result.every((d) => d.rows != bestRows || d.cols != bestCols)) {
+      result.add(PuzzleDifficulty(label: label, rows: bestRows, cols: bestCols));
+    }
+  });
+  return result;
 }

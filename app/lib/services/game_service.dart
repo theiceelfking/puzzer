@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show AssetImage, ImageProvider, MemoryImage;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+import '../models/puzzle_catalog.dart';
 import '../models/puzzle_piece.dart';
 import '../models/puzzle_player.dart';
 
@@ -40,6 +42,18 @@ class GameService extends ChangeNotifier {
   bool completed = false;
   // Whether the faint picture is drawn under the board as a guide.
   bool showBackground = true;
+  // Bytes of the room's uploaded picture; null for bundled pictures, and
+  // briefly null after joining until the server has sent them.
+  Uint8List? customImage;
+
+  bool get usesCustomImage => imageId == kCustomImageId;
+
+  /// The room's picture for widgets, or null while an upload is in transit.
+  ImageProvider? get pictureProvider {
+    if (!usesCustomImage) return AssetImage(puzzleAssetPath(imageId));
+    final bytes = customImage;
+    return bytes == null ? null : MemoryImage(bytes);
+  }
 
   final List<PuzzlePiece> pieces = [];
   final Map<String, PuzzlePlayer> players = {};
@@ -53,15 +67,19 @@ class GameService extends ChangeNotifier {
     required int rows,
     required int cols,
     bool showBackground = true,
+    Uint8List? customImage,
   }) async {
     _playerName = playerName;
     await _connect(serverUrl);
+    // After _connect, which clears the previous room's state.
+    this.customImage = customImage;
     _send('create_room', {
       'playerName': playerName,
       'imageId': imageId,
       'rows': rows,
       'cols': cols,
       'showBackground': showBackground,
+      if (customImage != null) 'imageData': base64Encode(customImage),
     });
   }
 
@@ -124,6 +142,7 @@ class GameService extends ChangeNotifier {
     cols = 0;
     completed = false;
     showBackground = true;
+    customImage = null;
     pieces.clear();
     players.clear();
   }
@@ -141,6 +160,9 @@ class GameService extends ChangeNotifier {
         break;
       case 'pong':
         return;
+      case 'room_image':
+        customImage = base64Decode(payload['data'] as String);
+        break;
       case 'player_joined':
         final p = PuzzlePlayer.fromJson((payload['player'] as Map).cast<String, dynamic>());
         players[p.id] = p;
@@ -182,7 +204,10 @@ class GameService extends ChangeNotifier {
         final message = payload['message'] as String?;
         // Servers that predate the keepalive answer it with this error.
         if (message != null && message.startsWith('Unknown message type: ping')) return;
-        if (message == 'Room not found') {
+        if (message == 'Image too large') {
+          errorMessage = 'Ảnh quá lớn. Hãy chọn ảnh khác.';
+          _resetRoomState();
+        } else if (message == 'Room not found') {
           // Also reached when rejoining after a drop: the room is gone.
           errorMessage = 'Không tìm thấy phòng. Hãy kiểm tra lại mã phòng; phòng cũng có thể đã bị đóng.';
           _resetRoomState();
@@ -209,8 +234,7 @@ class GameService extends ChangeNotifier {
 
     pieces
       ..clear()
-      ..addAll((payload['pieces'] as List)
-          .map((e) => PuzzlePiece.fromJson((e as Map).cast<String, dynamic>())));
+      ..addAll((payload['pieces'] as List).map((e) => PuzzlePiece.fromJson((e as Map).cast<String, dynamic>())));
 
     players.clear();
     for (final raw in (payload['players'] as List)) {
@@ -274,7 +298,11 @@ class GameService extends ChangeNotifier {
     if (url == null || room == null) return;
     try {
       await _connect(url, rejoining: true);
-      _send('join_room', {'playerName': _playerName ?? '', 'roomId': room});
+      _send('join_room', {
+        'playerName': _playerName ?? '',
+        'roomId': room,
+        if (customImage != null) 'haveImage': true,
+      });
     } catch (_) {
       if (roomId != null) _scheduleReconnect();
     }
@@ -282,11 +310,9 @@ class GameService extends ChangeNotifier {
 
   void pickPiece(String pieceId) => _send('pick_piece', {'pieceId': pieceId});
 
-  void movePiece(String pieceId, double x, double y) =>
-      _send('move_piece', {'pieceId': pieceId, 'x': x, 'y': y});
+  void movePiece(String pieceId, double x, double y) => _send('move_piece', {'pieceId': pieceId, 'x': x, 'y': y});
 
-  void dropPiece(String pieceId, double x, double y) =>
-      _send('drop_piece', {'pieceId': pieceId, 'x': x, 'y': y});
+  void dropPiece(String pieceId, double x, double y) => _send('drop_piece', {'pieceId': pieceId, 'x': x, 'y': y});
 
   void _send(String type, Map<String, dynamic> payload) {
     final channel = _channel;

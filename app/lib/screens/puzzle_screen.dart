@@ -19,21 +19,30 @@ class PuzzleScreen extends StatefulWidget {
 
 class _PuzzleScreenState extends State<PuzzleScreen> {
   ui.Image? _image;
-  String? _loadedImageId;
+  // What _image was decoded from: the image id, or the uploaded bytes.
+  Object? _loadedSource;
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final imageId = context.read<GameService>().imageId;
-    if (imageId.isNotEmpty && imageId != _loadedImageId) {
-      _loadedImageId = imageId;
-      _loadImage(imageId);
+  /// Starts decoding the room's picture when it (or its bytes) first shows
+  /// up. Called from build, which already rebuilds on every service change.
+  void _syncImage(GameService game) {
+    if (game.imageId.isEmpty) return;
+    // An uploaded picture arrives a moment after the room state; until then
+    // there is nothing to decode.
+    final Object? source = game.usesCustomImage ? game.customImage : game.imageId;
+    if (source != null && !identical(source, _loadedSource) && source != _loadedSource) {
+      _loadedSource = source;
+      _loadImage(source);
     }
   }
 
-  Future<void> _loadImage(String imageId) async {
-    final data = await rootBundle.load(puzzleAssetPath(imageId));
-    final bytes = Uint8List.view(data.buffer, data.offsetInBytes, data.lengthInBytes);
+  Future<void> _loadImage(Object source) async {
+    final Uint8List bytes;
+    if (source is Uint8List) {
+      bytes = source;
+    } else {
+      final data = await rootBundle.load(puzzleAssetPath(source as String));
+      bytes = Uint8List.view(data.buffer, data.offsetInBytes, data.lengthInBytes);
+    }
     final codec = await ui.instantiateImageCodec(bytes);
     final frame = await codec.getNextFrame();
     if (mounted) setState(() => _image = frame.image);
@@ -42,6 +51,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
   @override
   Widget build(BuildContext context) {
     final game = context.watch<GameService>();
+    _syncImage(game);
     final image = _image;
 
     return PopScope(
@@ -116,7 +126,8 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
             ? const Center(child: CircularProgressIndicator())
             : Stack(
                 children: [
-                  Positioned.fill(child: ColoredBox(color: Theme.of(context).canvasColor, child: PuzzleBoard(image: image))),
+                  Positioned.fill(
+                      child: ColoredBox(color: Theme.of(context).canvasColor, child: PuzzleBoard(image: image))),
                   Positioned(
                     left: 12,
                     bottom: 12,
@@ -131,7 +142,7 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                       ),
                     ),
                   ),
-                  if (game.completed) _CompletionOverlay(imageId: game.imageId),
+                  if (game.completed) _CompletionOverlay(picture: game.pictureProvider),
                   if (game.status == ConnectionStatus.reconnecting)
                     const Positioned(
                       top: 12,
@@ -170,9 +181,9 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
 }
 
 class _CompletionOverlay extends StatelessWidget {
-  final String imageId;
+  final ImageProvider? picture;
 
-  const _CompletionOverlay({required this.imageId});
+  const _CompletionOverlay({required this.picture});
 
   @override
   Widget build(BuildContext context) {
@@ -193,10 +204,11 @@ class _CompletionOverlay extends StatelessWidget {
                   const SizedBox(height: 8),
                   const Text('Cả nhóm đã ghép xong bức tranh 🎉', textAlign: TextAlign.center),
                   const SizedBox(height: 16),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.asset(puzzleAssetPath(imageId), width: 220),
-                  ),
+                  if (picture != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image(image: picture!, width: 220),
+                    ),
                   const SizedBox(height: 16),
                   FilledButton(
                     onPressed: () async {

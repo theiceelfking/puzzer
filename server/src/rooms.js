@@ -18,11 +18,14 @@ function makeRoomCode() {
 }
 
 class Room {
-  constructor(id, imageId, rows, cols, showBackground = true) {
+  constructor(id, imageId, rows, cols, showBackground = true, imageData = null) {
     this.id = id;
     this.imageId = imageId;
     // Whether clients draw the faint picture under the board as a guide.
     this.showBackground = showBackground;
+    // Base64 picture uploaded by the creator, or null for a bundled one. Kept
+    // in memory only, so it disappears together with the room.
+    this.imageData = imageData;
     this.rows = rows;
     this.cols = cols;
     this.pieces = generatePieces(rows, cols);
@@ -72,6 +75,7 @@ class Room {
       cols: this.cols,
       pieceSize: PIECE_SIZE,
       showBackground: this.showBackground,
+      hasCustomImage: this.imageData !== null,
       pieces: this.pieces.map((p) => ({
         id: p.id, row: p.row, col: p.col, x: p.x, y: p.y, placed: p.placed, z: p.z, heldBy: p.heldBy,
       })),
@@ -166,12 +170,12 @@ class RoomManager {
     setInterval(() => this.sweepStaleRooms(), 60 * 1000).unref();
   }
 
-  createRoom(imageId, rows, cols, showBackground = true) {
+  createRoom(imageId, rows, cols, showBackground = true, imageData = null) {
     let id;
     do {
       id = makeRoomCode();
     } while (this.rooms.has(id));
-    const room = new Room(id, imageId, rows, cols, showBackground);
+    const room = new Room(id, imageId, rows, cols, showBackground, imageData);
     this.rooms.set(id, room);
     return room;
   }

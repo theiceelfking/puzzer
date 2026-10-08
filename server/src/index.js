@@ -11,6 +11,11 @@ const PLAYER_NAME_MAX = 24;
 // ping every client well inside that window. A client that doesn't answer
 // by the next round is considered gone.
 const HEARTBEAT_MS = 30 * 1000;
+// Uploaded pictures arrive base64-encoded inside create_room. The app shrinks
+// them first, so this (~1.5 MB of JPEG) is a ceiling against abuse.
+const CUSTOM_IMAGE_ID = 'custom';
+const MAX_IMAGE_BASE64 = 2 * 1024 * 1024;
+const MAX_MESSAGE_BYTES = MAX_IMAGE_BASE64 + 64 * 1024;
 
 const roomManager = new RoomManager();
 
@@ -24,7 +29,7 @@ const server = http.createServer((req, res) => {
   res.end();
 });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: MAX_MESSAGE_BYTES });
 
 function send(socket, type, payload) {
   if (socket.readyState === socket.OPEN) {
@@ -88,7 +93,19 @@ wss.on('connection', (socket) => {
         leaveCurrentRoom();
         // Defaults to on, so clients that don't send it keep the old look.
         const showBackground = payload.showBackground !== false;
-        const room = roomManager.createRoom(imageId, rows, cols, showBackground);
+        let imageData = null;
+        if (imageId === CUSTOM_IMAGE_ID) {
+          imageData = payload.imageData;
+          if (typeof imageData !== 'string' || imageData.length === 0) {
+            send(socket, 'error', { message: 'imageData is required' });
+            return;
+          }
+          if (imageData.length > MAX_IMAGE_BASE64) {
+            send(socket, 'error', { message: 'Image too large' });
+            return;
+          }
+        }
+        const room = roomManager.createRoom(imageId, rows, cols, showBackground, imageData);
         player = {
           id: crypto.randomUUID(),
           name: sanitizeName(payload.playerName),
@@ -119,6 +136,10 @@ wss.on('connection', (socket) => {
         currentRoom = room;
 
         send(socket, 'room_state', room.publicState(player.id));
+        // A client rejoining after a dropped connection already has it.
+        if (room.imageData !== null && payload.haveImage !== true) {
+          send(socket, 'room_image', { data: room.imageData });
+        }
         room.broadcast(
           { type: 'player_joined', payload: { player: { id: player.id, name: player.name, color: player.color } } },
           player.id,
@@ -186,6 +207,11 @@ wss.on('connection', (socket) => {
         send(socket, 'error', { message: `Unknown message type: ${type}` });
     }
   });
+
+  // Without a listener, a socket error (an oversized or malformed frame, a
+  // reset connection) is thrown and takes the whole server down. ws closes
+  // the socket itself, and 'close' below does the cleanup.
+  socket.on('error', () => {});
 
   socket.on('close', () => {
     leaveCurrentRoom();

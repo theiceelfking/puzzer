@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/puzzle_catalog.dart';
 import 'game_screen.dart';
@@ -17,11 +21,115 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
   String _selectedImageId = kPuzzleImages.first.id;
   int _difficultyIndex = 0;
   bool _showBackground = true;
+  // The player's own picture, if they picked one. Kept in memory only: it is
+  // never written to the device, and the server drops it with the room.
+  Uint8List? _customBytes;
+  double _customRatio = 4 / 3;
+  bool _picking = false;
+
+  // Raw size the server accepts once base64-encoded (see MAX_IMAGE_BASE64).
+  static const int _maxCustomBytes = 1500 * 1024;
+
+  Future<void> _pickCustomImage() async {
+    if (_picking) return;
+    setState(() => _picking = true);
+    try {
+      // The picker shrinks and re-encodes the photo, so what we upload is a
+      // modest JPEG rather than a full camera original.
+      final file = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1400,
+        maxHeight: 1400,
+        imageQuality: 70,
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      if (bytes.length > _maxCustomBytes) {
+        _showMessage('Ảnh quá lớn. Hãy chọn ảnh khác.');
+        return;
+      }
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final ratio = frame.image.width / frame.image.height;
+      frame.image.dispose();
+      if (!mounted) return;
+      setState(() {
+        _customBytes = bytes;
+        _customRatio = ratio;
+        _selectedImageId = kCustomImageId;
+        _difficultyIndex = 0;
+      });
+    } catch (_) {
+      _showMessage('Không mở được ảnh này. Hãy thử ảnh khác.');
+    } finally {
+      if (mounted) setState(() => _picking = false);
+    }
+  }
+
+  void _showMessage(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Widget _tileFrame({required bool selected, required Widget picture, required String label, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
+            width: 3,
+          ),
+        ),
+        child: Column(
+          children: [
+            Expanded(child: ClipRRect(borderRadius: BorderRadius.circular(9), child: picture)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _customTile() {
+    final bytes = _customBytes;
+    final selected = _selectedImageId == kCustomImageId;
+    if (bytes == null) {
+      final scheme = Theme.of(context).colorScheme;
+      return _tileFrame(
+        selected: false,
+        onTap: _pickCustomImage,
+        label: 'Tải ảnh lên',
+        picture: Container(
+          width: double.infinity,
+          color: scheme.surfaceContainerHighest,
+          child: _picking
+              ? const Center(child: CircularProgressIndicator())
+              : Icon(Icons.add_photo_alternate_outlined, size: 44, color: scheme.primary),
+        ),
+      );
+    }
+    return _tileFrame(
+      selected: selected,
+      // First tap selects it; tapping the selected tile picks another photo.
+      onTap: selected ? _pickCustomImage : () => setState(() => _selectedImageId = kCustomImageId),
+      label: selected ? 'Chạm để đổi ảnh' : 'Ảnh của bạn',
+      picture: Image.memory(bytes, fit: BoxFit.cover, width: double.infinity, cacheWidth: 480),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final image = kPuzzleImages.firstWhere((o) => o.id == _selectedImageId);
-    final difficulties = image.difficulties;
+    final usingCustom = _selectedImageId == kCustomImageId && _customBytes != null;
+    final difficulties = usingCustom
+        ? difficultiesForAspect(_customRatio)
+        : kPuzzleImages.firstWhere((o) => o.id == _selectedImageId, orElse: () => kPuzzleImages.first).difficulties;
     final difficulty = difficulties[_difficultyIndex.clamp(0, difficulties.length - 1)];
 
     return Scaffold(
@@ -38,42 +146,22 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
             childAspectRatio: 4 / 3.6,
-            children: kPuzzleImages.map((option) {
-              final selected = option.id == _selectedImageId;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedImageId = option.id),
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: selected ? Theme.of(context).colorScheme.primary : Colors.transparent,
-                      width: 3,
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(9),
-                          child: Image.asset(
-                            option.assetPath,
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            // Decode thumbnails small; the full pictures are large.
-                            cacheWidth: 480,
-                          ),
-                        ),
-                      ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: Text(option.label,
-                            maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
-                      ),
-                    ],
+            children: [
+              _customTile(),
+              for (final option in kPuzzleImages)
+                _tileFrame(
+                  selected: option.id == _selectedImageId,
+                  onTap: () => setState(() => _selectedImageId = option.id),
+                  label: option.label,
+                  picture: Image.asset(
+                    option.assetPath,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    // Decode thumbnails small; the full pictures are large.
+                    cacheWidth: 480,
                   ),
                 ),
-              );
-            }).toList(),
+            ],
           ),
         ],
       ),
@@ -119,7 +207,8 @@ class _CreateRoomScreenState extends State<CreateRoomScreen> {
                         connect: (service) => service.connectAndCreateRoom(
                           serverUrl: widget.serverUrl,
                           playerName: widget.playerName,
-                          imageId: _selectedImageId,
+                          imageId: usingCustom ? kCustomImageId : _selectedImageId,
+                          customImage: usingCustom ? _customBytes : null,
                           rows: difficulty.rows,
                           cols: difficulty.cols,
                           showBackground: _showBackground,

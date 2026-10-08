@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../models/piece_shape.dart';
-import '../models/puzzle_catalog.dart';
 import '../services/game_service.dart';
 import 'puzzle_piece_widget.dart';
 
@@ -74,8 +73,8 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
 
     // Placed pieces always sit underneath loose ones, so a piece locked into
     // the board can never cover one that still needs to be picked up.
-    final sortedPieces = [...game.pieces]
-      ..sort((a, b) {
+    final picture = game.pictureProvider;
+    final sortedPieces = [...game.pieces]..sort((a, b) {
         if (a.placed != b.placed) return a.placed ? -1 : 1;
         return a.z.compareTo(b.z);
       });
@@ -122,11 +121,8 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
                     decoration: BoxDecoration(
                       border: Border.all(color: Theme.of(context).colorScheme.outline, width: 2),
                     ),
-                    child: game.showBackground
-                        ? Opacity(
-                            opacity: 0.25,
-                            child: Image(image: AssetImage(puzzleAssetPath(game.imageId)), fit: BoxFit.cover),
-                          )
+                    child: game.showBackground && picture != null
+                        ? Opacity(opacity: 0.25, child: Image(image: picture, fit: BoxFit.cover))
                         : const SizedBox.expand(),
                   ),
                 ),
@@ -174,5 +170,4 @@ class _PuzzleBoardState extends State<PuzzleBoard> {
       },
     );
   }
-
 }
