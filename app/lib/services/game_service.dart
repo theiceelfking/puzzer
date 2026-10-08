@@ -7,7 +7,12 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../models/puzzle_piece.dart';
 import '../models/puzzle_player.dart';
 
-enum ConnectionStatus { disconnected, connecting, connected, error }
+enum ConnectionStatus { disconnected, connecting, connected, reconnecting, error }
+
+/// Proxies in front of the server (e.g. Cloudflare) drop WebSockets that stay
+/// silent for ~100s, so send a keepalive well inside that window.
+const Duration _kPingInterval = Duration(seconds: 25);
+const int _kMaxReconnectAttempts = 6;
 
 /// Holds the live state of one puzzle room and talks to the realtime
 /// WebSocket server. All room state is authoritative on the server; this
@@ -16,6 +21,12 @@ enum ConnectionStatus { disconnected, connecting, connected, error }
 class GameService extends ChangeNotifier {
   WebSocketChannel? _channel;
   StreamSubscription? _subscription;
+  Timer? _pingTimer;
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  // Remembered so a dropped connection can rejoin the same room.
+  String? _serverUrl;
+  String? _playerName;
 
   ConnectionStatus status = ConnectionStatus.disconnected;
   String? errorMessage;
@@ -40,6 +51,7 @@ class GameService extends ChangeNotifier {
     required int rows,
     required int cols,
   }) async {
+    _playerName = playerName;
     await _connect(serverUrl);
     _send('create_room', {
       'playerName': playerName,
@@ -54,6 +66,7 @@ class GameService extends ChangeNotifier {
     required String playerName,
     required String roomId,
   }) async {
+    _playerName = playerName;
     await _connect(serverUrl);
     _send('join_room', {
       'playerName': playerName,
@@ -61,12 +74,20 @@ class GameService extends ChangeNotifier {
     });
   }
 
-  Future<void> _connect(String serverUrl) async {
+  /// Opens the socket. With [rejoining] the current room state stays on
+  /// screen (status [ConnectionStatus.reconnecting]) instead of being reset.
+  Future<void> _connect(String serverUrl, {bool rejoining = false}) async {
+    _serverUrl = serverUrl;
+    _pingTimer?.cancel();
     await _subscription?.cancel();
     await _channel?.sink.close();
-    _resetRoomState();
+    if (!rejoining) {
+      _reconnectTimer?.cancel();
+      _reconnectAttempts = 0;
+      _resetRoomState();
+    }
 
-    status = ConnectionStatus.connecting;
+    status = rejoining ? ConnectionStatus.reconnecting : ConnectionStatus.connecting;
     errorMessage = null;
     notifyListeners();
 
@@ -80,8 +101,10 @@ class GameService extends ChangeNotifier {
         onError: _onSocketError,
         onDone: _onSocketDone,
       );
+      _pingTimer = Timer.periodic(_kPingInterval, (_) => _send('ping', {}));
       notifyListeners();
     } catch (e) {
+      if (rejoining) rethrow; // _reconnect decides whether to try again
       status = ConnectionStatus.error;
       errorMessage = 'Không thể kết nối tới server: $e';
       notifyListeners();
@@ -107,8 +130,12 @@ class GameService extends ChangeNotifier {
 
     switch (type) {
       case 'room_state':
+        _reconnectAttempts = 0;
+        status = ConnectionStatus.connected;
         _applyRoomState(payload);
         break;
+      case 'pong':
+        return;
       case 'player_joined':
         final p = PuzzlePlayer.fromJson((payload['player'] as Map).cast<String, dynamic>());
         players[p.id] = p;
@@ -148,11 +175,17 @@ class GameService extends ChangeNotifier {
         break;
       case 'error':
         final message = payload['message'] as String?;
-        errorMessage = message == 'Room not found'
-            ? 'Không tìm thấy phòng. Hãy kiểm tra lại mã phòng; phòng cũng có thể đã bị đóng.'
-            : message;
-        // An error before we're in a room means create/join failed. Flag it
-        // so the UI shows the message instead of waiting forever.
+        // Servers that predate the keepalive answer it with this error.
+        if (message != null && message.startsWith('Unknown message type: ping')) return;
+        if (message == 'Room not found') {
+          // Also reached when rejoining after a drop: the room is gone.
+          errorMessage = 'Không tìm thấy phòng. Hãy kiểm tra lại mã phòng; phòng cũng có thể đã bị đóng.';
+          _resetRoomState();
+        } else {
+          errorMessage = message;
+        }
+        // An error while we're not in a room means create/join failed. Flag
+        // it so the UI shows the message instead of waiting forever.
         if (roomId == null) status = ConnectionStatus.error;
         break;
     }
@@ -190,15 +223,54 @@ class GameService extends ChangeNotifier {
   }
 
   void _onSocketError(Object error) {
+    if (roomId != null) {
+      _scheduleReconnect();
+      return;
+    }
     status = ConnectionStatus.error;
     errorMessage = 'Mất kết nối tới server: $error';
     notifyListeners();
   }
 
   void _onSocketDone() {
+    if (roomId != null) {
+      _scheduleReconnect();
+      return;
+    }
     if (status != ConnectionStatus.error) {
       status = ConnectionStatus.disconnected;
       notifyListeners();
+    }
+  }
+
+  /// The socket dropped while we were in a room: keep the board on screen and
+  /// try to get back in, backing off between attempts.
+  void _scheduleReconnect() {
+    _pingTimer?.cancel();
+    if (_reconnectTimer?.isActive ?? false) return;
+    if (_reconnectAttempts >= _kMaxReconnectAttempts) {
+      _resetRoomState();
+      status = ConnectionStatus.error;
+      errorMessage = 'Mất kết nối tới server. Hãy kiểm tra mạng rồi vào lại phòng.';
+      notifyListeners();
+      return;
+    }
+    status = ConnectionStatus.reconnecting;
+    notifyListeners();
+    final delay = Duration(seconds: 1 << _reconnectAttempts.clamp(0, 4));
+    _reconnectAttempts++;
+    _reconnectTimer = Timer(delay, _reconnect);
+  }
+
+  Future<void> _reconnect() async {
+    final url = _serverUrl;
+    final room = roomId;
+    if (url == null || room == null) return;
+    try {
+      await _connect(url, rejoining: true);
+      _send('join_room', {'playerName': _playerName ?? '', 'roomId': room});
+    } catch (_) {
+      if (roomId != null) _scheduleReconnect();
     }
   }
 
@@ -212,12 +284,15 @@ class GameService extends ChangeNotifier {
 
   void _send(String type, Map<String, dynamic> payload) {
     final channel = _channel;
-    if (channel == null || status != ConnectionStatus.connected) return;
+    if (channel == null) return;
+    if (status != ConnectionStatus.connected && status != ConnectionStatus.reconnecting) return;
     channel.sink.add(jsonEncode({'type': type, 'payload': payload}));
   }
 
   Future<void> leaveRoom() async {
     _send('leave_room', {});
+    _pingTimer?.cancel();
+    _reconnectTimer?.cancel();
     await _subscription?.cancel();
     await _channel?.sink.close();
     _channel = null;
@@ -228,6 +303,8 @@ class GameService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _pingTimer?.cancel();
+    _reconnectTimer?.cancel();
     _subscription?.cancel();
     _channel?.sink.close();
     super.dispose();

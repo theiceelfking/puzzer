@@ -104,6 +104,21 @@ class _PuzzleScreenState extends State<PuzzleScreen> {
                     ),
                   ),
                   if (game.completed) _CompletionOverlay(imageId: game.imageId),
+                  if (game.status == ConnectionStatus.reconnecting)
+                    const Positioned(
+                      top: 12,
+                      left: 12,
+                      right: 12,
+                      child: Center(
+                        child: Card(
+                          color: Colors.black87,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            child: Text('Mất kết nối, đang kết nối lại…', style: TextStyle(color: Colors.white)),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
       ),

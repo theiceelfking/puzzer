@@ -7,6 +7,10 @@ const PORT = process.env.PORT || 8080;
 const MIN_GRID = 2;
 const MAX_GRID = 14;
 const PLAYER_NAME_MAX = 24;
+// Proxies such as Cloudflare drop WebSockets that stay silent for ~100s, so
+// ping every client well inside that window. A client that doesn't answer
+// by the next round is considered gone.
+const HEARTBEAT_MS = 30 * 1000;
 
 const roomManager = new RoomManager();
 
@@ -54,6 +58,11 @@ wss.on('connection', (socket) => {
     }
     currentRoom = null;
   }
+
+  socket.isAlive = true;
+  socket.on('pong', () => {
+    socket.isAlive = true;
+  });
 
   socket.on('message', (raw) => {
     let msg;
@@ -165,6 +174,12 @@ wss.on('connection', (socket) => {
         break;
       }
 
+      // Keepalive sent by the app; the reply is only there to carry traffic.
+      case 'ping': {
+        send(socket, 'pong', {});
+        break;
+      }
+
       default:
         send(socket, 'error', { message: `Unknown message type: ${type}` });
     }
@@ -174,6 +189,17 @@ wss.on('connection', (socket) => {
     leaveCurrentRoom();
   });
 });
+
+setInterval(() => {
+  for (const socket of wss.clients) {
+    if (!socket.isAlive) {
+      socket.terminate();
+      continue;
+    }
+    socket.isAlive = false;
+    socket.ping();
+  }
+}, HEARTBEAT_MS).unref();
 
 server.listen(PORT, () => {
   console.log(`Puzzer WebSocket server listening on port ${PORT}`);
