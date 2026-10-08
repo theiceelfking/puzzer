@@ -38,6 +38,11 @@ class _JoinRoomScreenState extends State<JoinRoomScreen> {
               TextFormField(
                 controller: _codeController,
                 textCapitalization: TextCapitalization.characters,
+                // Room codes are plain A-Z/2-9; keep autocorrect and predictive
+                // input from rewriting them.
+                autocorrect: false,
+                enableSuggestions: false,
+                keyboardType: TextInputType.visiblePassword,
                 decoration: const InputDecoration(
                   labelText: 'Mã phòng',
                   hintText: 'VD: 8UKGA8',

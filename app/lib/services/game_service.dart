@@ -147,7 +147,13 @@ class GameService extends ChangeNotifier {
         completed = true;
         break;
       case 'error':
-        errorMessage = payload['message'] as String?;
+        final message = payload['message'] as String?;
+        errorMessage = message == 'Room not found'
+            ? 'Không tìm thấy phòng. Hãy kiểm tra lại mã phòng; phòng cũng có thể đã bị đóng.'
+            : message;
+        // An error before we're in a room means create/join failed. Flag it
+        // so the UI shows the message instead of waiting forever.
+        if (roomId == null) status = ConnectionStatus.error;
         break;
     }
     notifyListeners();
