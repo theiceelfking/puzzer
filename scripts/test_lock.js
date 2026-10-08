@@ -25,9 +25,11 @@ async function main() {
 
   const b = connect();
   await new Promise((r) => b.on('open', r));
+  // Listen for both events before sending: over a real network they can
+  // arrive in either order, and a listener attached late misses its event.
+  const joined = Promise.all([once(b, 'room_state'), once(a, 'player_joined')]);
   b.send(JSON.stringify({ type: 'join_room', payload: { roomId: stateA.roomId, playerName: 'Bob' } }));
-  await once(b, 'room_state');
-  await once(a, 'player_joined');
+  await joined;
 
   const piece = stateA.pieces[0];
 
